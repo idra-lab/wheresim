@@ -1131,7 +1131,7 @@ if __name__ == '__main__':
     world_name = 'fast.world'
     use_gui = False
     p.state_estimation = 'ground_truth' # 'odometry',  'pronto', 'ground_truth' (only sim), 'mocap'
-    rl_control = 'none' #'none',  'state_est_based'
+    rl_control = 'state_est_based' #'none',  'state_est_based'
     # NOTE: in the RL controller, SE NN is used only if state estimation is not pronto
     rl_use_nn_se = p.state_estimation != 'pronto'
     p.controller_type = 'tsid' # 'quasi-static', 'tsid'
@@ -1162,10 +1162,11 @@ if __name__ == '__main__':
         if use_joy:
             joy = JoyManager("js1", end_scale = 0.2)
 
+        # for quick startup
         #p.resetRobot(basePoseDes=np.array([0.0, -0.0,  0.356, -0.0, -0.0, 0.0]))
         p.startupProcedure()
         # to reduce simulation frequency
-        p.setSimSpeed(dt_sim=0.001, max_update_rate=100, iters=1500)
+        #p.setSimSpeed(dt_sim=0.001, max_update_rate=100, iters=1500)
 
         if p.state_estimation=='pronto':
             launchFileNode("mocap_qualisys", "qualisys.launch")
@@ -1189,6 +1190,7 @@ if __name__ == '__main__':
         if generate_reference:
             p.ref_gen = QuadrupedTasks(task='pushup', robot_conf=conf.robot_params[p.robot_name], gui=True, quadruped=p)
             p.ref_gen.startUp(p.time)
+
 
         #compute robot reference
         com_state, foot_steps, cop,  gait_pattern = p.getCoMReference(com_optim_conf, p.robot_height, p.comPoseW[:2], p.comTwistW[:2])
@@ -1242,7 +1244,7 @@ if __name__ == '__main__':
                     break
 
             #p.applyForce(0, 100, 0, 0, 0, 0, 0.25)
-            if rl_control != 'none' and (p.time > (p.startTime + 1.)):
+            if rl_control != 'none':
                 if use_joy:
                     rl_controller.velocity_cmd = np.array([long_x, long_y, rot_z])
                 else:
