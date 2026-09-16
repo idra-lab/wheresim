@@ -1130,21 +1130,17 @@ if __name__ == '__main__':
     p = QuadrupedController('aliengo')
     world_name = 'fast.world'
     use_gui = False
-    p.state_estimation = 'ground_truth' # 'odometry',  'pronto', 'ground_truth' (only sim), 'mocap'
-    rl_control = 'state_est_based' #'none',  'state_est_based'
-    # NOTE: in the RL controller, SE NN is used only if state estimation is not pronto
-    rl_use_nn_se = p.state_estimation != 'pronto'
-    p.controller_type = 'tsid' # 'quasi-static', 'tsid'
-
-    use_joy = True
+    p.state_estimation = 'ground_truth' # 'odometry', 'ground_truth' (only sim),
+    rl_control = 'none' #'none',  'state_est_based'
+    use_joy = False
+    # generate pushup motions
     generate_reference = False
-    p.SAVE_BAG = False  #
+    p.SAVE_BAG = False
     if p.robot_name == 'go2':
         p.custom_locosim_launch_file = True
 
     if rl_control == 'state_est_based':
-        rl_controller = RlVelocityController(p.robot_name, p.dt, use_nn_se=rl_use_nn_se, debug=True)
-
+        rl_controller = RlVelocityController(p.robot_name, p.dt, use_nn_se=True, debug=False)
     try:
         p.startController(world_name=world_name,
                           use_ground_truth_contacts=True,
@@ -1160,7 +1156,7 @@ if __name__ == '__main__':
                         bag_name="test_" + format_date + ".bag", record_from_startup_=False)
             p.recorder.start_recording_srv()
         if use_joy:
-            joy = JoyManager("js1", end_scale = 0.2)
+            joy = JoyManager("js0", end_scale = 0.2)
 
         # for quick startup
         #p.resetRobot(basePoseDes=np.array([0.0, -0.0,  0.356, -0.0, -0.0, 0.0]))
@@ -1168,58 +1164,17 @@ if __name__ == '__main__':
         # to reduce simulation frequency
         #p.setSimSpeed(dt_sim=0.001, max_update_rate=100, iters=1500)
 
-        if p.state_estimation=='pronto':
-            launchFileNode("mocap_qualisys", "qualisys.launch")
-            launchFileNode("pronto_aliengo", "pronto_aliengo.launch", additional_args=['pronto_conf:='+p.pronto_config,
-                                                                                       'use_sim_time:='+str(not p.real_robot)])
         if rl_control != 'none':
             p.pid.setPDjoints(rl_controller.kp, rl_controller.kd, np.full(12,0))
         else:
-            if p.controller_type == 'quasi-static':
-                # softer "wbc" gains since tau_ffwd already supplies most of the required torque;
-                # the same PD tracks q_des/qd_des on every joint, computed below by Wcom2Joints_des()
-                # for both stance legs (whole-body IK, feet held planted) and swing legs (foot-trajectory IK)
-                p.pid.setPDjoints(p.kp_wbc_j, p.kd_wbc_j, p.ki_wbc_j)
-            if p.controller_type == 'tsid':
-                # TSID whole-body controller (kept for reference / easy switch-back, see the matching
-                tsid_quadruped = TsidQuadruped(com_optim_conf, p.configuration.copy(), p.gen_velocities.copy())
-                # with TSID (pure feedforward torque from the QP), the low-level joint PD must be off instead:
-                p.pid.setPDs(0, 0, 0)
+            p.pid.setPDjoints(p.kp_wbc_j, p.kd_wbc_j, p.ki_wbc_j)
 
         p.startTime = p.time
         if generate_reference:
             p.ref_gen = QuadrupedTasks(task='pushup', robot_conf=conf.robot_params[p.robot_name], gui=True, quadruped=p)
             p.ref_gen.startUp(p.time)
 
-
-        #compute robot reference
-        com_state, foot_steps, cop,  gait_pattern = p.getCoMReference(com_optim_conf, p.robot_height, p.comPoseW[:2], p.comTwistW[:2])
-        com_ref,  dcom_ref, ddcom_ref, x_ref, dx_ref, ddx_ref, cop_ref = p.generateInterpolatedReference(com_optim_conf, com_state, foot_steps, cop,   gait_pattern, p.robot_height)
-
-        # plot references
-        p.plotReference()
-
-        # quasi-static CoM controller (p.wbc.computeWBC) + per-leg joint PD running in parallel,
-        # initialized with the current (standing) robot state
         p.updateKinematics()
-
-        foot_swing_thresh = 1e-4  # foot z-reference above this -> foot is swinging
-
-        counter = 0
-        # Wbase2Joints_des()/Wcom2Joints_des() integrate q_des open-loop between IK solves, so
-        # prime them with the actual state before the first call (see its docstring)
-        p.q_des = p.q.copy()
-        p.qd_des = np.zeros(p.robot.na)
-        # no orientation/angular-velocity reference from the (2d) LIPM plan: keep the trunk level
-        p.comPoseW_des[3:] = 0.
-        p.comTwistW_des[3:] = 0.
-        p.comAccW_des[:] = 0.
-        # robot starts standing on all 4 feet: latch their current position as the stance target
-        p.stance_legs[:] = True
-        for leg in range(4):
-            p.W_contacts_des[leg] = p.W_contacts[leg].copy()
-
-
         print(colored(f"Starting main loop  T =  {p.time}", "blue"))
         while not ros.is_shutdown():
             p.updateKinematics()
@@ -1252,153 +1207,34 @@ if __name__ == '__main__':
                         
                 p.baseTwistW_des[:3] = p.b_R_w.T @ np.append(rl_controller.velocity_cmd[:2], 0.0)
                 p.baseTwistW_des[5] = rl_controller.velocity_cmd[2]
-                if rl_control == 'state_est_based':
-                    # Compute observations for the policy
-                    # Disable the lin_vel_b and use lin_acc_b observation if using NN SE
-                    if rl_controller.use_nn_se and not rl_controller.debug:
-                        lin_acc_b = p.baseLinAccB
-                        lin_vel_b = None
-                    elif rl_controller.use_nn_se and rl_controller.debug:
-                        lin_acc_b = p.baseLinAccB
-                        lin_vel_b = p.b_R_w.dot(p.baseTwistW[:3])
-                    else:
-                        lin_acc_b = None
-                        lin_vel_b = p.b_R_w.dot(p.baseTwistW[:3])
-                    ang_vel_b = p.b_R_w.dot(p.baseTwistW[3:6])
-                    proj_gravity = p.b_R_w.dot(np.array([0,0,-1]))
 
-                    p.rl_q_des = rl_controller.action(lin_acc_b, lin_vel_b, ang_vel_b, proj_gravity, p.q, p.qd, policy_type="default")
+                # Compute observations for the policy
+                # Disable the lin_vel_b and use lin_acc_b observation if using NN SE
+                if rl_controller.use_nn_se:
+                    lin_acc_b = p.baseLinAccB
+                    lin_vel_b = None
+                else:
+                    lin_acc_b = None
+                    lin_vel_b = p.b_R_w.dot(p.baseTwistW[:3])
+                ang_vel_b = p.b_R_w.dot(p.baseTwistW[3:6])
+                proj_gravity = p.b_R_w.dot(np.array([0,0,-1]))
+
+                p.rl_q_des = rl_controller.action(lin_acc_b, lin_vel_b, ang_vel_b, proj_gravity, p.q, p.qd, policy_type="default")
 
                 #switch off wbc
                 p.grForcesW_des = np.zeros((12))
                 p.tau_ffwd = np.zeros(12)
                 p.send_command(p.rl_q_des, np.zeros(12), np.zeros(12), log_data_in_send_command=True)
             else:
-
                 if generate_reference:
-                    p.q_des, p.qd_des, p.tau_ffwd, p.basePoseW_des, p.baseTwistW_des = p.ref_gen.generateReference(p.time)
+                    p.q_des, p.qd_des, p.tau_ffwd, p.basePoseW_des, p.baseTwistW_des = p.ref_gen.generateReference(
+                        p.time)
                 else:
-                    ####################
-                    # get reference from optimization trajectory interpolated
-                    #########################
-                    idx = min(counter, com_ref.shape[1] - 1)
-                    p.comPoseW_des[:3] = com_ref[:, idx]
-                    p.comTwistW_des[:3] = dcom_ref[:, idx]
-                    p.comAccW_des[:3] = ddcom_ref[:, idx]
-
-
-                    # cop_ref
-                    #plot desired cop
-                    p.cop_des = cop_ref[:, idx]
-                    p.ros_pub.add_marker(np.concatenate((p.cop_des, [0])), radius=0.1, color="red")
-                    # plot actual cop
-                    p.cop_act = p.computeCoP()
-                    p.ros_pub.add_marker(np.concatenate((p.cop_act,  [0])), radius=0.1, color="blue")
-
-                    if counter < com_ref.shape[1] - 1:
-                        counter += 1
-
-                    if p.controller_type == 'tsid':
-                        ####################################
-                        # TSID whole-body controller (CoM task + swing-foot tasks + point contacts)
-                        # kept for reference / easy switch-back: uncomment this block (and the
-                        # tsid_quadruped instantiation above) and comment out the quasi-static block
-                        # below to use TSID again instead
-                        ####################################
-                        tsid_quadruped.set_com_ref(com_ref[:, idx], dcom_ref[:, idx], ddcom_ref[:, idx])
-
-                        for foot_name in com_optim_conf.ee_frames:
-                            leg = p.u.leg_map[foot_name[:2].upper()]
-                            # feed the planned foot trajectory into the des-foot log (plotContacts), since
-                            # this walking loop never otherwise touches p.W_contacts_des during locomotion
-                            p.W_contacts_des[leg] = x_ref[foot_name][:, idx]
-                            #planned liftoff
-                            is_swinging = x_ref[foot_name][2, idx] > foot_swing_thresh
-                            #haptic TD
-                            # if is_swinging:
-                            #     p.stance_legs[leg] = False
-                            #     tsid_quadruped.remove_contact(foot_name, transition_time=com_optim_conf.contact_transition_time)
-                            # # haptic touchdown
-                            # elif p.contact_state[leg]:
-                            #     # plan says stance, but only rigidify the contact once the
-                            #     # foot is actually sensed on the ground (avoids commanding a
-                            #     # ground reaction force at a foot that hasn't touched down yet)
-                            #     p.stance_legs[leg] = True
-                            #     tsid_quadruped.add_contact(foot_name)
-
-                            # non haptic TD: plan says stance, but only latch the (fixed)
-                            if is_swinging:
-                                p.stance_legs[leg] = False
-                                # swing leg: track the planned foot trajectory (world frame)
-                                tsid_quadruped.remove_contact(foot_name,  transition_time=com_optim_conf.contact_transition_time)
-                            else:
-                                # plan says stance but touchdown not sensed yet: keep reaching for the
-                                # last commanded (swing) target instead of freezing the leg mid-air
-                                p.stance_legs[leg] = True
-                                tsid_quadruped.add_contact(foot_name)
-
-                            tsid_quadruped.set_foot_3d_ref(foot_name, x_ref[foot_name][:, idx],
-                                                            dx_ref[foot_name][:, idx], ddx_ref[foot_name][:, idx])
-
-                        HQPData = tsid_quadruped.compute_problem(float(p.time), p.configuration, p.gen_velocities)
-                        sol = tsid_quadruped.solve(HQPData)
-                        if sol.status != 0:
-                            print(colored(f"QP problem could not be solved! Error code: {sol.status}", "red"))
-                        else:
-                            p.tau_ffwd = tsid_quadruped.get_torques(sol)
-                            for foot_name in com_optim_conf.ee_frames:
-                                leg = p.u.leg_map[foot_name[:2].upper()]
-                                p.u.setLegJointState(leg, tsid_quadruped.get_contact_force(foot_name, sol), p.grForcesW_des)
-
-                    else:
-                        #####################################
-                        # quasi-static CoM controller: stance legs are tracked in parallel by a joint PD
-                        # (q_des/qd_des from the whole-body IK below) plus p.wbc.computeWBC's ffwd torque;
-                        # swing legs are pure joint-PD tracking of the planned foot trajectory (computeWBC
-                        # zeroes out their columns, so they only get the constant h_joints bias, not a real ffwd)
-                        #####################################
-                        for foot_name in com_optim_conf.ee_frames:
-                            leg = p.u.leg_map[foot_name[:2].upper()]
-                            # planned liftoff
-                            is_swinging = x_ref[foot_name][2, idx] > foot_swing_thresh
-                            #haptic TD
-                            # if is_swinging:
-                            #     p.stance_legs[leg] = False
-                            #     # swing leg: track the planned foot trajectory (world frame)
-                            #     p.W_contacts_des[leg] = x_ref[foot_name][:, idx]
-                            # elif p.contact_state[leg]:
-                            #     # haptic touchdown: plan says stance, but only latch the (fixed) stance
-                            #     # target once the foot is actually sensed on the ground, and only once,
-                            #     # otherwise it would just track the (possibly slipping) actual position
-                            #     if not p.stance_legs[leg]:
-                            #         p.W_contacts_des[leg] = p.W_contacts[leg].copy()
-                            #     p.stance_legs[leg] = True
-                            # else:
-                            #     # plan says stance but touchdown not sensed yet: keep reaching for the
-                            #     # last commanded (swing) target instead of freezing the leg mid-air
-                            #     p.stance_legs[leg] = False
-
-                            #non haptic TD: plan says stance, but only latch the (fixed)
-                            if is_swinging:
-                                p.stance_legs[leg] = False
-                                # swing leg: track the planned foot trajectory (world frame)
-                                p.W_contacts_des[leg] = x_ref[foot_name][:, idx]
-                            else:
-                                # plan says stance but touchdown not sensed yet: keep reaching for the
-                                # last commanded (swing) target instead of freezing the leg mid-air
-                                p.stance_legs[leg] = True
-
-                        # map CoM pose/twist + per-foot targets above into q_des/qd_des for all 12 joints
-                        p.Wcom2Joints_des()
-
-                        p.tau_ffwd, p.grForcesW_des = p.wbc.computeWBC(p.W_contacts, p.wJ, p.h_joints, p.basePoseW,
-                                                                     p.comPoseW, p.baseTwistW, p.comTwistW,
-                                                                     p.comPoseW_des, p.comTwistW_des, p.comAccW_des,
-                                                                     p.centroidalInertiaB,
-                                                                     comControlled=True, type='projection',
-                                                                     stance_legs=p.stance_legs)
-
-                p.send_command(p.q_des, p.qd_des, p.alphaCollapse*p.tau_ffwd, log_data_in_send_command=True)
+                    p.tau_ffwd, p.grForcesW_des = p.wbc.gravityCompensationBase(p.B_contacts,
+                                                                                p.wJ,
+                                                                                p.h_joints,
+                                                                                p.comPoseW)
+                p.send_command(p.q_des, p.qd_des, p.alphaCollapse * p.tau_ffwd, log_data_in_send_command=True)
 
             p.visualizeContacts()
         
@@ -1413,42 +1249,12 @@ if __name__ == '__main__':
         traceback.print_exc()
 
     if conf.plotting:
-        plotJoint('position', time_log=p.time_log, q_log=p.q_log, q_des_log=p.q_des_log, sharex=True, sharey=False,
-                  start=0, end=-1)
-        #plotJoint('torque', time_log=p.time_log, tau_des_log=p.tau_ffwd_log)
-        plotFrame('position', time_log=p.time_log, des_Pose_log=p.comPoseW_des_log, Pose_log=p.comPoseW_log,
-                  title='CoM', frame='W', sharex=True, sharey=False, start=0, end=-1)
-        plotFrame('velocity', time_log=p.time_log, des_Twist_log=p.comTwistW_des_log, Twist_log=p.comTwistW_log,
-                  title='CoM', frame='W', sharex=True, sharey=False, start=0, end=-1)
+        plotFrame('position', time_log=p.time_log, des_Pose_log=p.basePoseW_des_log, Pose_log=p.basePoseW_log,
+                  title='Base', frame='W', sharex=True, sharey=False, start=0, end=-1)
+        plotFrame('velocity', time_log=p.time_log, des_Twist_log=p.baseTwistW_des_log, Twist_log=p.baseTwistW_log,
+                  title='Base', frame='W', sharex=True, sharey=False, start=0, end=-1)
         plotContacts('position', time_log=p.time_log, des_LinPose_log=p.W_contacts_des_log, LinPose_log=p.W_contacts_log,
                       frame='W', title='Feet position and contact state')
-
-        fig = plt.figure()
-        fig.suptitle('CoM and CoP XY tracking', fontsize=20)
-        plt.plot(p.comPoseW_des_log[0, :], p.comPoseW_des_log[1, :], color='green', lw=2, label='CoM des')
-        plt.plot(p.comPoseW_log[0, :], p.comPoseW_log[1, :], color='green', linestyle='-',  lw=1, label='CoM act')
-        plt.plot(p.cop_des_log[0, :], p.cop_des_log[1, :], color='blue', lw=2, label='CoP des')
-        plt.plot(p.cop_log[0, :], p.cop_log[1, :], color='blue', linestyle='-', lw=1, label='CoP act')
-        plt.scatter(foot_steps[0, :], foot_steps[1, :], facecolors='none', edgecolors='black', label='footholds')
-        plt.scatter(foot_steps[2, :], foot_steps[3, :], facecolors='none', edgecolors='black')
-        plt.xlabel('X [m]')
-        plt.ylabel('Y [m]')
-        plt.axis('equal')
-        plt.legend()
-        plt.grid(True)
-
-        fig = plt.figure()
-        fig.suptitle('Stance legs (planned)', fontsize=20)
-        leg_names = ['LF', 'LH', 'RF', 'RH']
-        for leg in range(4):
-            ax = plt.subplot(4, 1, leg + 1, sharex=fig.axes[0] if leg > 0 else None)
-            plt.plot(p.time_log, p.stance_legs_log[leg, :], color='black', lw=1)
-            plt.ylabel(leg_names[leg])
-            plt.ylim([-0.2, 1.2])
-            plt.yticks([0, 1], ['swing', 'stance'])
-            plt.grid(True)
-        plt.xlabel('Time [s]')
-
         plt.ion()
         plt.show()
 
