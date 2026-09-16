@@ -30,7 +30,7 @@ def computeVirtualImpedanceWrench(conf, act_state, des_state, W_contacts, stance
     # Feedback wrench (Virtual PD)
     # assume gains are given in BF for convenience
     Kp_lin = w_R_hf.T @ np.diag([conf['Kp_lin_x'], conf['Kp_lin_y'], conf['Kp_lin_z']]) @ w_R_hf
-    Kd_lin = w_R_hf.T @ np.diag([conf['Kd_lin_x'], conf['Kd_lin_x'], conf['Kd_lin_x']]) @ w_R_hf
+    Kd_lin = w_R_hf.T @ np.diag([conf['Kd_lin_x'], conf['Kd_lin_y'], conf['Kd_lin_z']]) @ w_R_hf
     Kp_ang = w_R_hf.T @ np.diag([conf['KpRoll'], conf['KpPitch'], conf['KpYaw']]) @ w_R_hf
     Kd_ang = w_R_hf.T @  np.diag([conf['KdRoll'], conf['KdPitch'], conf['KdYaw']]) @ w_R_hf
 
