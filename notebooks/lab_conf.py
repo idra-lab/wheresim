@@ -21,8 +21,8 @@ qd0 = np.matrix([ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).T
 qdd0 = np.matrix([ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).T
 
 # Parameters of Joint Reference Trajectories (X,Y, Z, Roll, Pitch, Yaw), (X,Y we assume them in the horizontal frame (as base frame but aligned with gravity)
-amp                  = np.array([ 0.0, 0.0, 0.03, 0.0, 0.1, 0.0]).T     # amplitude
-freq                 = np.array([ 0.0, 0.0, 0.5, 0.0, 1.0, 0.0]).T           # frequency (time 2 PI)
+amp                  = np.array([ 0.0, 0.0, 0.03, 0.0, 0.1, 0.0]).T    # amplitude
+freq                 = np.array([ 0.0, 0.0, 0.5, 0.0, 1.0, 0.0]).T     # frequency (time 2 PI)
 phi                  = np.array([ 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).T     # phase
 
 buffer_size = 30001
@@ -44,9 +44,8 @@ control_params['go2'] = {'Kp_lin_x': 300, 'Kp_lin_y': 300, 'Kp_lin_z': 800,
                        'KpRoll': 50, 'KpPitch': 50, 'KpYaw': 50,
                        'KdRoll': 3, 'KdPitch': 3, 'KdYaw': 3, 'gravity': 9.81}
 
-control_params['aliengo'] = {'Kp_lin_x': 300, 'Kp_lin_y': 300, 'Kp_lin_z': 800,
-                       'Kd_lin_x': 50, 'Kd_lin_y': 50, 'Kd_lin_z': 50,
-                       'KpRoll': 50, 'KpPitch': 50, 'KpYaw': 50,
-                       'KdRoll': 3, 'KdPitch': 3, 'KdYaw': 3, 'gravity': 9.81}
 
-   
+control_params['aliengo'] = {'Kp_lin_x': 500, 'Kp_lin_y': 500, 'Kp_lin_z': 1000,
+                       'Kd_lin_x': 200, 'Kd_lin_y': 200, 'Kd_lin_z': 400,
+                       'KpRoll': 200, 'KpPitch': 200, 'KpYaw': 200,
+                       'KdRoll': 20, 'KdPitch': 20, 'KdYaw': 20, 'gravity': 9.81}

@@ -40,9 +40,6 @@ robot_params['aliengo'] ={'dt': 0.002,
                           'kp_ang': np.array([200., 200., 100.]),
                           'kd_ang': np.array([10., 20., 20.]),
 
-                          #joint configuration
-                          #default
-                          #'q_0': np.array([0.2, 0.78, -1.7, 0.20, 0.78, -1.7, -0.20, 0.78, -1.7, -0.20, 0.78, -1.7]),  # this is to set the desired heigth for the startup phase
                           #orbit
                           'q_0': np.array([0.0951, 0.8303,-1.5419,
                                            0.0980, 0.9864, -1.4778,
@@ -61,7 +58,7 @@ robot_params['aliengo'] ={'dt': 0.002,
                         'spawn_y': 0.0,
                         'spawn_z': 0.37,
                         'ip': "192.168.123.220",
-                        'buffer_size': 50001} # note the frames are all aligned with base for joints = 0
+                        'buffer_size': 50001}
 
 robot_params['go2'] ={'dt': 0.002,
                       'buffer_size': 25001, # 120 seconds
@@ -71,9 +68,9 @@ robot_params['go2'] ={'dt': 0.002,
                       'ki': np.array([0., 0., 0.] * 4),
 
                       # joint pid + wbc (optional)
-                      'kp_wbc': np.array([15., 15., 15.]*4),#np.array([10., 10., 10.]*4),
-                      'kd_wbc': np.array([1., 1., 1.]*4),#np.array([1., 1., 1.]*4),
-                      'ki_wbc': np.array([0., 0., 0.]*4),#np.array([0.3, 0.3, 0.3]*4),
+                      'kp_wbc': np.array([15., 15., 15.]*4),
+                      'kd_wbc': np.array([1., 1., 1.]*4),
+                      'ki_wbc': np.array([0., 0., 0.]*4),
                       # virtual impedance wrench control
                       'kp_lin': np.array([800, 500., 900.]),  # x y z
                       'kd_lin': np.array([100, 100., 100.]),
@@ -91,7 +88,6 @@ robot_params['go2'] ={'dt': 0.002,
                       # ee params
                       'ee_frames': ['lf_foot', 'lh_foot', 'rf_foot','rh_foot'],
                       'force_th': 7.,
-                      'contact_th': 0.01, # tolerance understand when /knee base is touching the ground
                       # simulation spawn [m] and [rad]
                       'spawn_x': 0.0,
                       'spawn_y': 0.0,
@@ -101,7 +97,9 @@ robot_params['go2'] ={'dt': 0.002,
                       'spawn_Y': 0.0,
                       'ip': "192.168.123.161",
                       # use real robot or simulation
-                      'real_robot': False} # note the frames are all aligned with base for joints = 0
+                      'real_robot': False}
+
+
 verbose = False
 plotting = True
 

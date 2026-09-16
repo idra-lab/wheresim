@@ -61,12 +61,12 @@ def computeVirtualImpedanceWrench(conf, act_state, des_state, W_contacts, stance
     Wffwd = np.zeros(6)                                                                
     if (params.ffwdOn):    
         ffdLinear = params.robot.robotMass * des_state.accel.linear
-       # compute inertia in the WF  w_I = R' * B_I * R
+        # compute inertia in the WF  w_I = R' * B_I * R
         W_Inertia = np.dot(w_R_b, np.dot(params.robotInertiaB, w_R_b.T))
         # compute w_des_omega_dot  Jomega*des_euler_rates_dot + Jomega_dot*des euler_rates
         Jomega_dot =  mathJet.Tomega_dot(des_state.pose.orientation,  des_state.twist.angular)
         w_des_omega_dot = Jomega.dot(des_state.accel.angular) + Jomega_dot.dot(des_state.twist.angular)                
-        ffdAngular = W_Inertia.dot(w_des_omega_dot) 
+        ffdAngular = W_Inertia.dot(w_des_omega_dot)
         #ffdAngular = W_Inertia.dot(util.angPart(des_state.des_acc))
         Wffwd = np.hstack([ffdLinear, ffdAngular])
         
